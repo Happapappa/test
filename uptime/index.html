@@ -1,0 +1,1059 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Аптайм</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Unbounded:wght@500;700&display=swap">
+<style>
+  :root {
+    color-scheme: dark;
+    --room: #0b0f17;
+    --panel: #131a27;
+    --panel-hi: #1b2436;
+    --line: #2a3548;
+    --ink: #e9eef6;
+    --dim: #8e9ab0;
+    --tray: #e2ae33;
+    --tray-deep: #9a7419;
+    --tray-ink: #1d1503;
+    --led: #3ee08f;
+    --warn: #ffb547;
+    --alert: #ff4d5e;
+    --display: "Unbounded", "Arial Black", system-ui, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  html { height: 100%; box-sizing: border-box; background: var(--room); }
+  [hidden] { display: none !important; }
+  *, *::before, *::after { box-sizing: inherit; }
+  body {
+    height: 100%; margin: 0; overflow: hidden; overscroll-behavior: none;
+    background: var(--room); color: var(--ink); font: 14px/1.45 var(--mono);
+    -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent;
+  }
+  button { font: inherit; color: inherit; }
+  #app { height: 100%; display: flex; flex-direction: column; }
+
+  /* status strip, styled like the front of a 1U unit */
+  #top {
+    display: flex; align-items: center; gap: 18px; padding: 10px 16px;
+    background: var(--panel); border-bottom: 1px solid var(--line);
+  }
+  .stat { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+  .lbl { font-size: 10px; line-height: 1; letter-spacing: .14em; text-transform: uppercase; color: var(--dim); }
+  .v { font: 700 18px/1 var(--display); white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .v small { font: 400 12px/1 var(--mono); color: var(--dim); margin-left: 2px; }
+  #s-up { display: flex; align-items: center; gap: 7px; }
+  #s-up i { width: 8px; height: 8px; border-radius: 50%; background: var(--led); box-shadow: 0 0 8px var(--led); }
+  #s-up.warn { color: var(--warn); } #s-up.warn i { background: var(--warn); box-shadow: 0 0 8px var(--warn); }
+  #s-up.bad { color: var(--alert); } #s-up.bad i { background: var(--alert); box-shadow: 0 0 8px var(--alert); }
+  .tools { margin-left: auto; display: flex; gap: 8px; }
+  .ib {
+    min-width: 38px; height: 38px; padding: 0 10px; display: grid; place-items: center; cursor: pointer;
+    border-radius: 9px; border: 1px solid var(--line); background: var(--panel-hi);
+    font: 700 13px/1 var(--display);
+  }
+  .ib svg { width: 16px; height: 16px; }
+
+  #stage { position: relative; flex: 1 1 auto; min-height: 0; overflow: hidden; touch-action: none; }
+  #map { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: pointer; }
+
+  #toast {
+    position: absolute; left: 16px; right: 16px; top: 14px; display: flex; justify-content: center; pointer-events: none;
+  }
+  #toast span {
+    max-width: 520px; padding: 9px 14px; border-radius: 10px; text-align: center;
+    background: rgba(12,16,26,.92); border: 1px solid var(--line); box-shadow: 0 10px 30px rgba(0,0,0,.4);
+    font-size: 13px; line-height: 1.35; opacity: 0; transform: translateY(-6px); transition: opacity .2s, transform .2s;
+  }
+  #toast span b { color: var(--tray); font-weight: 600; }
+  #toast.show span { opacity: 1; transform: none; }
+
+  /* dock */
+  #dock {
+    display: flex; gap: 10px; align-items: stretch; padding: 10px 16px 12px;
+    background: var(--panel); border-top: 1px solid var(--line);
+  }
+  #palette, #inspect { flex: 1 1 auto; min-width: 0; }
+  #palette { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+  .tb {
+    display: flex; align-items: center; gap: 10px; min-width: 0; padding: 8px 10px; cursor: pointer; text-align: left;
+    border-radius: 10px; border: 1px solid var(--line); background: var(--panel-hi);
+  }
+  .tb canvas { width: 36px; height: 36px; flex: none; }
+  .tb .txt { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+  .tb .nm { font-weight: 600; font-size: 13px; line-height: 1.1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tb .cost { font: 500 12px/1 var(--display); color: var(--tray); }
+  .tb.poor { opacity: .5; }
+  .tb.poor .cost { color: var(--dim); }
+  .tb[aria-pressed="true"] { border-color: var(--tray); box-shadow: inset 0 0 0 1px var(--tray); background: #252b2a; opacity: 1; }
+
+  #inspect { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  #inspect canvas { width: 40px; height: 40px; flex: none; }
+  .ins-txt { display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1 1 180px; }
+  .ins-name { font: 700 15px/1.1 var(--display); }
+  .ins-stats { font-size: 12px; color: var(--dim); }
+  .ins-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+  .sb {
+    height: 40px; padding: 0 14px; border-radius: 9px; cursor: pointer; white-space: nowrap;
+    border: 1px solid var(--line); background: var(--panel-hi); font-weight: 600; font-size: 13px;
+  }
+  .sb.up { border-color: var(--tray); color: var(--tray); }
+  .sb:disabled { opacity: .45; cursor: default; }
+
+  .btn {
+    appearance: none; border: 0; cursor: pointer; border-radius: 10px; padding: 0 20px; min-height: 48px;
+    background: var(--tray); color: var(--tray-ink); box-shadow: 0 3px 0 var(--tray-deep);
+    font: 700 15px/1.1 var(--display); letter-spacing: .01em;
+  }
+  .btn:active { transform: translateY(2px); box-shadow: 0 1px 0 var(--tray-deep); }
+  .btn:disabled { background: var(--panel-hi); color: var(--dim); box-shadow: none; cursor: default; transform: none; }
+  .btn.ghost { background: transparent; color: var(--ink); border: 1px solid var(--line); box-shadow: none; }
+  #b-wave { flex: none; display: flex; flex-direction: column; justify-content: center; gap: 3px; min-width: 170px; }
+  #b-wave small { font: 400 11px/1 var(--mono); opacity: .8; }
+
+  .tb:focus-visible, .ib:focus-visible, .sb:focus-visible, .btn:focus-visible { outline: 2px solid var(--tray); outline-offset: 2px; }
+
+  /* screens */
+  #overlay { position: absolute; inset: 0; display: flex; overflow-y: auto; padding: 16px; background: rgba(7,10,16,.74); }
+  .card {
+    margin: auto; width: min(460px, 100%); overflow: hidden;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 24px 60px rgba(0,0,0,.55);
+  }
+  .card-head {
+    display: flex; align-items: center; gap: 10px; padding: 9px 16px; background: #0f141e; border-bottom: 1px solid var(--line);
+    font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--dim);
+  }
+  .leds { display: flex; gap: 5px; }
+  .leds i { width: 7px; height: 7px; border-radius: 50%; background: var(--led); box-shadow: 0 0 6px var(--led); }
+  .leds i.a { background: var(--tray); box-shadow: 0 0 6px var(--tray); }
+  .leds i.r { background: var(--alert); box-shadow: 0 0 6px var(--alert); }
+  .card-head .unit { margin-left: auto; }
+  .card-body { padding: 18px 18px 20px; display: flex; flex-direction: column; gap: 14px; }
+  .card h1, .card h2 { margin: 0; font: 700 clamp(30px, 8vw, 42px)/1 var(--display); letter-spacing: -.01em; text-wrap: balance; }
+  .card p { margin: 0; max-width: 60ch; }
+  .card .muted { color: var(--dim); font-size: 13px; }
+  .keys { display: flex; flex-wrap: wrap; gap: 6px 14px; color: var(--dim); font-size: 12px; }
+  kbd { font: inherit; color: var(--ink); background: var(--panel-hi); border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 5px; padding: 0 6px; margin-right: 4px; }
+  .row { display: flex; gap: 10px 14px; flex-wrap: wrap; align-items: center; }
+  .best { color: var(--dim); font-size: 13px; }
+  .best b { color: var(--tray); font: 500 13px var(--display); }
+  .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 16px; margin: 0; }
+  .stats div { display: flex; flex-direction: column; gap: 3px; }
+  .stats dt { font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--dim); }
+  .stats dd { margin: 0; font: 700 22px/1.1 var(--display); font-variant-numeric: tabular-nums; }
+  .only-touch { display: none; }
+  .touch .only-touch { display: block; }
+  .touch .only-kb { display: none; }
+
+  @media (max-width: 760px) {
+    #top { gap: 14px; }
+    .v { font-size: 16px; }
+    #dock { flex-direction: column; }
+    .tb { flex-direction: column; gap: 4px; padding: 8px 4px; text-align: center; }
+    .tb .txt { align-items: center; }
+    .tb .nm { font-size: 12px; }
+    #b-wave { min-width: 0; min-height: 50px; }
+  }
+  @media (max-width: 380px) { #top { gap: 10px; } .tools .ib { min-width: 34px; padding: 0 8px; } }
+  @media (max-height: 520px) and (min-width: 761px) {
+    .card-body { padding: 14px 16px; gap: 10px; }
+  }
+  @media (prefers-reduced-motion: reduce) { #toast span { transform: none; transition: opacity .15s; } }
+</style>
+</head>
+<body>
+
+<div id="app">
+  <header id="top">
+    <div class="stat"><span class="lbl">Волна</span><span class="v"><span id="s-wave">0</span><small id="s-wave-max">/20</small></span></div>
+    <div class="stat"><span class="lbl">Аптайм</span><span class="v" id="s-up"><i></i><span id="s-up-v">100%</span></span></div>
+    <div class="stat"><span class="lbl">Бюджет</span><span class="v"><span id="s-money">160</span><small>₽</small></span></div>
+    <div class="tools">
+      <button class="ib" id="b-speed" type="button" aria-label="Скорость игры">×1</button>
+      <button class="ib" id="b-pause" type="button" aria-label="Пауза">
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <div id="stage">
+    <canvas id="map" aria-label="Серверная: пол, кабельный лоток и защита"></canvas>
+    <div id="toast" role="status" aria-live="polite"><span></span></div>
+
+    <div id="overlay">
+      <section class="card" id="scr-title" aria-labelledby="t-title">
+        <div class="card-head"><span class="leds"><i></i><i></i><i class="a"></i></span>Серверная · ночная смена<span class="unit">U42</span></div>
+        <div class="card-body">
+          <h1 id="t-title">Аптайм</h1>
+          <p>Из интернета в дата-центр ломится вредный трафик. Он идёт по жёлтому оптическому лотку прямо к стойке. Расставь защиту на плитках пола и не пропусти пакеты. Каждый прорыв отнимает 5% аптайма.</p>
+          <p class="muted">Выбери защиту внизу и нажми на свободную плитку. Нажми на поставленную, чтобы улучшить или продать.</p>
+          <div class="keys only-kb">
+            <span><kbd>1</kbd>–<kbd>4</kbd>защита</span>
+            <span><kbd>Пробел</kbd>волна</span>
+            <span><kbd>F</kbd>скорость</span>
+            <span><kbd>P</kbd>пауза</span>
+          </div>
+          <div class="row">
+            <button class="btn" id="b-start" type="button">Начать смену</button>
+            <span class="best" id="t-best" hidden>Рекорд: <b id="t-best-v">волна 0</b></span>
+          </div>
+        </div>
+      </section>
+
+      <section class="card" id="scr-pause" aria-labelledby="p-title" hidden>
+        <div class="card-head"><span class="leds"><i class="a"></i><i class="a"></i><i class="a"></i></span>Смена на паузе</div>
+        <div class="card-body">
+          <h2 id="p-title">Пауза</h2>
+          <div class="row">
+            <button class="btn" id="b-resume" type="button">Продолжить</button>
+            <button class="btn ghost" id="b-new1" type="button">Новая смена</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="card" id="scr-over" aria-labelledby="o-title" hidden>
+        <div class="card-head"><span class="leds"><i class="r"></i><i class="r"></i><i class="r"></i></span>Инцидент</div>
+        <div class="card-body">
+          <h2 id="o-title">Даунтайм</h2>
+          <p id="o-text">Стойка легла на волне 1.</p>
+          <dl class="stats">
+            <div><dt>Отбито волн</dt><dd id="o-waves">0</dd></div>
+            <div><dt>Заблокировано</dt><dd id="o-kills">0</dd></div>
+            <div><dt>Поставлено защиты</dt><dd id="o-built">0</dd></div>
+            <div><dt>Рекорд</dt><dd id="o-best">0</dd></div>
+          </dl>
+          <div class="row"><button class="btn" id="b-new2" type="button">Новая смена</button></div>
+        </div>
+      </section>
+
+      <section class="card" id="scr-won" aria-labelledby="w-title" hidden>
+        <div class="card-head"><span class="leds"><i></i><i></i><i></i></span>Смена закрыта</div>
+        <div class="card-body">
+          <h2 id="w-title">SLA выдержан</h2>
+          <p id="w-text">Все 20 волн отбиты.</p>
+          <div class="row">
+            <button class="btn" id="b-endless" type="button">Играть дальше</button>
+            <button class="btn ghost" id="b-new3" type="button">Новая смена</button>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <footer id="dock">
+    <div id="palette" role="group" aria-label="Защита"></div>
+    <div id="inspect" hidden>
+      <canvas id="ins-icon" width="80" height="80"></canvas>
+      <div class="ins-txt">
+        <span class="ins-name" id="ins-name">Файрвол · ур. 1</span>
+        <span class="ins-stats" id="ins-stats">Урон 6 · дальность 2,3</span>
+      </div>
+      <div class="ins-btns">
+        <button class="sb up" id="b-up" type="button">Улучшить</button>
+        <button class="sb" id="b-sell" type="button">Продать</button>
+        <button class="sb" id="b-close" type="button" aria-label="Закрыть">✕</button>
+      </div>
+    </div>
+    <button class="btn" id="b-wave" type="button"><span id="b-wave-t">Волна 1</span><small id="b-wave-s">запустить</small></button>
+  </footer>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  const $ = id => document.getElementById(id);
+  const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+  const lerp = (a, b, t) => a + (b - a) * t;
+  const store = {
+    get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+    set(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* storage unavailable */ } }
+  };
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const DISPLAY = '"Unbounded", "Arial Black", sans-serif';
+  const MONO = '"IBM Plex Mono", ui-monospace, monospace';
+  const fmt = n => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+  const fmt1 = n => (Math.round(n * 10) / 10).toString().replace('.', ',');
+
+  // ---------- world ----------
+  const COLS = 14, ROWS = 9, MAX_WAVE = 20, START_MONEY = 160, START_LIVES = 20, BEST_KEY = 'uptime-best';
+  const PATH = [[-.6, 1.5], [3.5, 1.5], [3.5, 6.5], [7.5, 6.5], [7.5, 2.5], [11.5, 2.5], [11.5, 7.5], [13.4, 7.5]];
+  const PROPS = [
+    { c: 1, r: 6, w: 1, h: 2, kind: 'ups', label: 'ИБП' },
+    { c: 5, r: 3, w: 1, h: 2, kind: 'crac', label: 'Конд.' },
+    { c: 9, r: 4, w: 1, h: 2, kind: 'rack', label: 'Стойка' }
+  ];
+  const BASE = { c: 13, r: 7 };
+
+  const TOWERS = {
+    fw:   { name: 'Файрвол',   cost: 50,  range: 2.3, rate: 2.2,  dmg: 6,  kind: 'bolt',  color: '#3fd0ff', about: 'частые выстрелы по одной цели' },
+    lim:  { name: 'Лимитер',   cost: 70,  range: 1.7, rate: 1.2,  dmg: 3,  kind: 'pulse', color: '#bfe3ff', slow: .35, about: 'замедляет всех вокруг' },
+    ddos: { name: 'Анти-DDoS', cost: 100, range: 2.4, rate: .75,  dmg: 16, kind: 'orb',   color: '#a98bff', splash: .95, about: 'бьёт по площади' },
+    ids:  { name: 'IDS',       cost: 125, range: 4.2, rate: .45,  dmg: 48, kind: 'beam',  color: '#ff9f45', about: 'бьёт далеко, пробивает шифр' }
+  };
+  const ORDER = ['fw', 'lim', 'ddos', 'ids'];
+  const EN = {
+    packet: { name: 'Пакет',  hp: 20,  speed: 1.25, reward: 5,  armor: 0, size: .19, color: '#ff7f66', dmg: 1 },
+    flood:  { name: 'Флуд',   hp: 8,   speed: 2.1,  reward: 2,  armor: 0, size: .14, color: '#ff5fb0', dmg: 1 },
+    crypt:  { name: 'Шифр',   hp: 50,  speed: .95,  reward: 9,  armor: 4, size: .22, color: '#ffcf4a', dmg: 1 },
+    worm:   { name: 'Червь',  hp: 36,  speed: 1.05, reward: 7,  armor: 0, size: .16, color: '#8ee06a', dmg: 1, split: 'flood' },
+    boss:   { name: 'Ботнет', hp: 420, speed: .6,   reward: 60, armor: 2, size: .34, color: '#ff3448', dmg: 4 }
+  };
+  const INTRO = {
+    flood: '<b>Флуд</b>: быстрый и толпой. Лимитер его притормозит.',
+    crypt: '<b>Шифр</b>: броня гасит слабые попадания. IDS пробивает её насквозь.',
+    boss:  '<b>Ботнет</b>: толстый и медленный. Прорыв стоит 20% аптайма.',
+    worm:  '<b>Червь</b>: после уничтожения распадается на два флуда.'
+  };
+
+  // path geometry
+  const segs = []; let pathLen = 0;
+  for (let i = 0; i < PATH.length - 1; i++) {
+    const [x1, y1] = PATH[i], [x2, y2] = PATH[i + 1], L = Math.hypot(x2 - x1, y2 - y1);
+    segs.push({ x1, y1, x2, y2, L, s0: pathLen }); pathLen += L;
+  }
+  function pointAt(s) {
+    s = clamp(s, 0, pathLen);
+    for (const g of segs) if (s <= g.s0 + g.L) { const t = (s - g.s0) / g.L; return [g.x1 + (g.x2 - g.x1) * t, g.y1 + (g.y2 - g.y1) * t]; }
+    const g = segs[segs.length - 1]; return [g.x2, g.y2];
+  }
+
+  // grid occupancy: null = free floor, 'path', 'prop', or a tower object
+  const grid = [];
+  function resetGrid() {
+    grid.length = 0;
+    for (let r = 0; r < ROWS; r++) grid.push(new Array(COLS).fill(null));
+    for (const g of segs) for (let t = 0; t <= 1.0001; t += .02) {
+      const c = Math.floor(lerp(g.x1, g.x2, t)), r = Math.floor(lerp(g.y1, g.y2, t));
+      if (c >= 0 && c < COLS && r >= 0 && r < ROWS) grid[r][c] = 'path';
+    }
+    for (const p of PROPS) for (let dc = 0; dc < p.w; dc++) for (let dr = 0; dr < p.h; dr++) grid[p.r + dr][p.c + dc] = 'prop';
+  }
+
+  // ---------- state ----------
+  const app = $('app'), stage = $('stage'), cv = $('map'), ctx = cv.getContext('2d');
+  let W = 2, H = 2, dpr = 1, cs = 40, ox = 0, oy = 0, portrait = false, bg = null;
+  let phase = 'title', paused = false, speedMult = 1, endless = false;
+  let money = START_MONEY, lives = START_LIVES, wave = 0, cleared = 0, kills = 0, built = 0, best = 0;
+  let towers = [], enemies = [], shots = [], fx = [], spawners = [], born = [];
+  let sel = null, inspected = null, hover = null, shake = 0, leakFlash = 0, tNow = 0, eid = 0, overT = 0;
+  const seen = new Set();
+
+  const hpMult = n => 1 + .22 * (n - 1) + .016 * (n - 1) * (n - 1);
+  const rewardMult = n => 1 + .04 * (n - 1);
+  function waveList(n) {
+    const list = []; let time = 0;
+    const group = (type, count, gap, delay = 0) => { time += delay; for (let i = 0; i < count; i++) { list.push({ time, type }); time += gap; } };
+    group('packet', 6 + Math.floor(n * 1.5), Math.max(.45, .85 - n * .02));
+    if (n >= 2) group('flood', 3 + n * 2, .28, 1.5);
+    if (n >= 4) group('crypt', 1 + Math.floor(n * .6), 1.1, 1.2);
+    if (n >= 6) group('worm', 1 + Math.floor((n - 4) * .5), 1.3, 1.2);
+    if (n >= 8 && n % 2 === 0) group('packet', 4 + n, .35, 1);
+    if (n % 5 === 0) group('boss', Math.floor(n / 5), 4, 2);
+    return list;
+  }
+  function tStats(t) {
+    const b = TOWERS[t.type], k = t.lvl - 1;
+    return {
+      dmg: b.dmg * Math.pow(1.55, k), range: b.range + .25 * k, rate: b.rate * Math.pow(1.12, k),
+      slow: b.slow ? b.slow + .1 * k : 0, splash: b.splash ? b.splash + .1 * k : 0
+    };
+  }
+  const upCost = t => t.lvl >= 3 ? 0 : Math.round(TOWERS[t.type].cost * (t.lvl === 1 ? .8 : 1.4));
+  const sellValue = t => Math.round(t.spent * .7);
+
+  // ---------- view transform (the map is transposed on tall screens) ----------
+  const V = (x, y) => portrait ? [ox + y * cs, oy + x * cs] : [ox + x * cs, oy + y * cs];
+  function toGrid(sx, sy) { const vx = (sx - ox) / cs, vy = (sy - oy) / cs; return portrait ? [vy, vx] : [vx, vy]; }
+  function cellRect(c, r, w = 1, h = 1) {
+    const [x1, y1] = V(c, r), [x2, y2] = V(c + w, r + h);
+    return [Math.min(x1, x2), Math.min(y1, y2), Math.abs(x2 - x1), Math.abs(y2 - y1)];
+  }
+
+  function resize() {
+    const r = stage.getBoundingClientRect();
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    W = Math.max(2, Math.round(r.width * dpr)); H = Math.max(2, Math.round(r.height * dpr));
+    cv.width = W; cv.height = H;
+    portrait = r.height > r.width * 1.05;
+    const vc = portrait ? ROWS : COLS, vr = portrait ? COLS : ROWS, pad = 8 * dpr;
+    cs = Math.max(8, Math.floor(Math.min((W - 2 * pad) / vc, (H - 2 * pad) / vr)));
+    ox = Math.round((W - vc * cs) / 2); oy = Math.round((H - vr * cs) / 2);
+    bg = renderBackground();
+  }
+
+  // ---------- drawing helpers ----------
+  function rrect(g, x, y, w, h, r) {
+    r = Math.min(r, w / 2, h / 2);
+    g.beginPath(); g.moveTo(x + r, y);
+    g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r);
+    g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath();
+  }
+  const circle = (g, x, y, r) => { g.beginPath(); g.arc(x, y, Math.max(0, r), 0, Math.PI * 2); };
+  function hash(a, b) { let h = (a * 374761393 + b * 668265263) | 0; h = (h ^ (h >>> 13)) * 1274126177; return ((h ^ (h >>> 16)) >>> 0) / 4294967296; }
+
+  // polyline offset sideways (miter joins); works for the right-angled tray
+  function offsetPath(pts, d) {
+    return pts.map((p, i) => {
+      const prev = pts[i - 1], next = pts[i + 1];
+      const dir = (a, b) => { const L = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1; return [(b[0] - a[0]) / L, (b[1] - a[1]) / L]; };
+      const n1 = prev ? (() => { const t = dir(prev, p); return [-t[1], t[0]]; })() : null;
+      const n2 = next ? (() => { const t = dir(p, next); return [-t[1], t[0]]; })() : null;
+      if (!n1) return [p[0] + n2[0] * d, p[1] + n2[1] * d];
+      if (!n2) return [p[0] + n1[0] * d, p[1] + n1[1] * d];
+      const mx = n1[0] + n2[0], my = n1[1] + n2[1], k = d / (1 + n1[0] * n2[0] + n1[1] * n2[1]);
+      return [p[0] + mx * k, p[1] + my * k];
+    });
+  }
+  function strokePoly(g, pts, width, color) {
+    g.beginPath(); pts.forEach(([x, y], i) => { const [sx, sy] = V(x, y); i ? g.lineTo(sx, sy) : g.moveTo(sx, sy); });
+    g.lineWidth = width; g.strokeStyle = color; g.lineJoin = 'miter'; g.lineCap = 'butt'; g.stroke();
+  }
+
+  function renderBackground() {
+    const c = document.createElement('canvas'); c.width = W; c.height = H;
+    const g = c.getContext('2d');
+    g.fillStyle = '#0b0f17'; g.fillRect(0, 0, W, H);
+    const [mx, my, mw, mh] = cellRect(0, 0, COLS, ROWS);
+    g.fillStyle = '#070a10'; g.fillRect(mx - 3 * dpr, my - 3 * dpr, mw + 6 * dpr, mh + 6 * dpr);
+    const seam = Math.max(1, Math.round(dpr));
+    for (let r = 0; r < ROWS; r++) for (let col = 0; col < COLS; col++) {
+      const [x, y, w, h] = cellRect(col, r);
+      const v = hash(col, r);
+      g.fillStyle = v < .5 ? '#1a2130' : '#1c2333';
+      g.fillRect(x + seam, y + seam, w - seam, h - seam);
+      if (v > .72 && grid[r][col] === null) {         // perforated cold-aisle tile
+        g.fillStyle = '#121925';
+        const n = 5, step = w / (n + 1);
+        for (let i = 1; i <= n; i++) for (let j = 1; j <= n; j++) { circle(g, x + i * step, y + j * step, Math.max(1, w * .035)); g.fill(); }
+      }
+    }
+    // cable tray
+    strokePoly(g, PATH, cs * .76, '#b8871d');
+    strokePoly(g, PATH, cs * .68, '#e2ae33');
+    strokePoly(g, PATH, cs * .56, '#20252f');
+    const fibers = [[-.19, '#e2ae33'], [-.1, '#39c5cf'], [0, '#ff9b42'], [.1, '#39c5cf'], [.19, '#e2ae33']];
+    for (const [d, col] of fibers) { g.globalAlpha = .38; strokePoly(g, offsetPath(PATH, d), Math.max(1, cs * .035), col); }
+    g.globalAlpha = 1;
+    // tray joints every cell
+    g.fillStyle = 'rgba(0,0,0,.35)';
+    for (let s = 1; s < pathLen - .2; s += 1) {
+      const [x, y] = pointAt(s), [x2, y2] = pointAt(s + .01);
+      const [sx, sy] = V(x, y), [tx, ty] = V(x2, y2);
+      const ang = Math.atan2(ty - sy, tx - sx);
+      g.save(); g.translate(sx, sy); g.rotate(ang); g.fillRect(-seam, -cs * .34, seam * 2, cs * .68); g.restore();
+    }
+    // entry label
+    const [ex, ey] = V(.5, .5);
+    g.fillStyle = '#5c6a84'; g.font = `600 ${Math.round(cs * .22)}px ${MONO}`; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText('WAN', ex, ey);
+    // props
+    for (const p of PROPS) drawProp(g, p);
+    return c;
+  }
+
+  function drawProp(g, p) {
+    const [x, y, w, h] = cellRect(p.c, p.r, p.w, p.h);
+    const m = cs * .08;
+    g.fillStyle = '#262e40'; rrect(g, x + m, y + m, w - 2 * m, h - 2 * m, cs * .08); g.fill();
+    g.strokeStyle = '#3a4660'; g.lineWidth = Math.max(1, dpr); g.stroke();
+    const ix = x + m * 2, iy = y + m * 2, iw = w - 4 * m, ih = h - 4 * m;
+    if (p.kind === 'rack') {
+      const rows = 8;
+      for (let i = 0; i < rows; i++) {
+        const along = w > h, t0 = i / rows;
+        g.fillStyle = '#1a2130';
+        if (along) g.fillRect(ix + iw * t0 + 1, iy, iw / rows - 2, ih); else g.fillRect(ix, iy + ih * t0 + 1, iw, ih / rows - 2);
+        g.fillStyle = hash(i, p.c) > .3 ? '#3ee08f' : '#e2ae33';
+        const lx = along ? ix + iw * (t0 + .5 / rows) : ix + iw * .82, ly = along ? iy + ih * .82 : iy + ih * (t0 + .5 / rows);
+        circle(g, lx, ly, Math.max(1, cs * .025)); g.fill();
+      }
+    } else if (p.kind === 'crac') {
+      for (const f of [.28, .72]) {
+        const cx = w > h ? x + w * f : x + w / 2, cy = w > h ? y + h / 2 : y + h * f, r = Math.min(iw, ih) * (w > h ? .8 : .36);
+        const rr = Math.min(r, Math.min(w, h) * .32);
+        g.strokeStyle = '#4a5878'; g.lineWidth = Math.max(1, cs * .03); circle(g, cx, cy, rr); g.stroke();
+        for (let k = 0; k < 4; k++) { const a = k * Math.PI / 2 + .4; g.beginPath(); g.moveTo(cx, cy); g.lineTo(cx + Math.cos(a) * rr * .85, cy + Math.sin(a) * rr * .85); g.stroke(); }
+      }
+    } else {
+      g.fillStyle = '#1a2130';
+      const bw = w > h ? iw * .3 : iw * .6, bh = w > h ? ih * .6 : ih * .3;
+      for (const f of [.3, .7]) {
+        const cx = w > h ? x + w * f : x + w / 2, cy = w > h ? y + h / 2 : y + h * f;
+        g.fillRect(cx - bw / 2, cy - bh / 2, bw, bh);
+        g.fillStyle = '#3ee08f'; g.fillRect(cx - bw / 2 + 2, cy + bh / 2 - Math.max(2, bh * .2) - 2, (bw - 4) * .8, Math.max(2, bh * .2)); g.fillStyle = '#1a2130';
+      }
+    }
+    g.fillStyle = '#8e9ab0'; g.font = `600 ${Math.round(cs * .18)}px ${MONO}`; g.textAlign = 'center'; g.textBaseline = 'middle';
+    const [lx, ly] = V(p.c + p.w / 2, p.r + p.h / 2);
+    g.fillText(p.label, lx, ly);
+  }
+
+  function drawTower(g, type, lvl, cx, cy, s, ang, kick, time) {
+    const b = TOWERS[type], col = b.color, h = s * .39;
+    g.save(); g.translate(cx, cy);
+    g.fillStyle = '#212a3b'; rrect(g, -h, -h, 2 * h, 2 * h, s * .1); g.fill();
+    g.lineWidth = Math.max(1, s * .035); g.strokeStyle = col; g.globalAlpha = .85; g.stroke(); g.globalAlpha = 1;
+    g.fillStyle = '#2c3750';
+    for (const vy of [-.62, -.5]) g.fillRect(-h * .6, h * vy, h * .5, Math.max(1, s * .025));
+    for (let i = 0; i < 3; i++) {
+      g.fillStyle = i < lvl ? col : '#39445c';
+      circle(g, (i - 1) * h * .42, h * .74, s * .045); g.fill();
+    }
+    g.rotate(ang);
+    const k = kick * s * .07;
+    if (b.kind === 'bolt') {
+      g.fillStyle = col; g.fillRect(-k, -s * .05, s * .38, s * .1);
+      g.fillStyle = '#2f394d'; circle(g, 0, 0, s * .19); g.fill(); g.strokeStyle = col; g.lineWidth = Math.max(1, s * .03); g.stroke();
+      g.fillStyle = col; circle(g, 0, 0, s * .06); g.fill();
+    } else if (b.kind === 'pulse') {
+      g.fillStyle = col; g.globalAlpha = .22; circle(g, 0, 0, s * .23); g.fill(); g.globalAlpha = 1;
+      circle(g, 0, 0, s * (.1 + kick * .04)); g.fill();
+      g.strokeStyle = col; g.lineWidth = Math.max(1, s * .035);
+      for (let i = 0; i < 3; i++) { const a = time * 1.6 + i * 2.094; g.beginPath(); g.arc(0, 0, s * .26, a, a + .8); g.stroke(); }
+    } else if (b.kind === 'orb') {
+      g.fillStyle = col; g.fillRect(-k, -s * .085, s * .3, s * .17);
+      g.fillStyle = '#2f394d'; rrect(g, -s * .17, -s * .17, s * .34, s * .34, s * .05); g.fill();
+      g.strokeStyle = col; g.lineWidth = Math.max(1, s * .03); g.stroke();
+      g.fillStyle = col; g.globalAlpha = .7; circle(g, 0, 0, s * .07); g.fill(); g.globalAlpha = 1;
+    } else {
+      g.fillStyle = col; g.fillRect(-k, -s * .028, s * .46, s * .056);
+      g.fillStyle = '#2f394d'; g.beginPath(); g.moveTo(0, -s * .18); g.lineTo(s * .18, 0); g.lineTo(0, s * .18); g.lineTo(-s * .18, 0); g.closePath(); g.fill();
+      g.strokeStyle = col; g.lineWidth = Math.max(1, s * .03); g.stroke();
+      g.fillStyle = '#fff4e0'; circle(g, 0, 0, s * .05); g.fill();
+    }
+    g.restore();
+  }
+
+  function drawEnemy(e) {
+    const d = EN[e.type], [sx, sy] = V(e.x, e.y), r = d.size * cs;
+    const [nx, ny] = pointAt(e.s + .05), [hx, hy] = V(nx, ny);
+    const ang = Math.atan2(hy - sy, hx - sx);
+    ctx.fillStyle = d.color; ctx.globalAlpha = .16; circle(ctx, sx, sy, r * 1.9); ctx.fill(); ctx.globalAlpha = 1;
+    ctx.save(); ctx.translate(sx, sy);
+    if (e.type === 'packet') {
+      ctx.rotate(ang);
+      ctx.fillStyle = d.color; rrect(ctx, -r, -r * .75, 2 * r, 1.5 * r, r * .25); ctx.fill();
+      ctx.strokeStyle = 'rgba(40,10,10,.55)'; ctx.lineWidth = Math.max(1, cs * .025);
+      ctx.beginPath(); ctx.moveTo(-r * .75, -r * .5); ctx.lineTo(0, r * .15); ctx.lineTo(r * .75, -r * .5); ctx.stroke();
+    } else if (e.type === 'flood') {
+      ctx.rotate(ang);
+      ctx.fillStyle = d.color; ctx.beginPath(); ctx.moveTo(r * 1.2, 0); ctx.lineTo(-r * .8, r * .85); ctx.lineTo(-r * .4, 0); ctx.lineTo(-r * .8, -r * .85); ctx.closePath(); ctx.fill();
+    } else if (e.type === 'crypt') {
+      ctx.fillStyle = d.color; ctx.beginPath();
+      for (let i = 0; i < 6; i++) { const a = i * Math.PI / 3 + Math.PI / 6; ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r); }
+      ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#3a2a05'; ctx.fillRect(-r * .38, -r * .05, r * .76, r * .55);
+      ctx.strokeStyle = '#3a2a05'; ctx.lineWidth = Math.max(1, r * .16); ctx.beginPath(); ctx.arc(0, -r * .08, r * .26, Math.PI, 0); ctx.stroke();
+    } else if (e.type === 'worm') {
+      ctx.restore(); ctx.save();
+      for (const [back, k] of [[.36, .62], [.19, .8]]) {
+        const [bx, by] = pointAt(Math.max(0, e.s - back)), [px, py] = V(bx, by);
+        ctx.fillStyle = d.color; ctx.globalAlpha = .85; circle(ctx, px, py, r * k); ctx.fill(); ctx.globalAlpha = 1;
+      }
+      ctx.translate(sx, sy); ctx.rotate(ang);
+      ctx.fillStyle = d.color; circle(ctx, 0, 0, r); ctx.fill();
+      ctx.fillStyle = '#16300c'; circle(ctx, r * .35, -r * .35, r * .18); ctx.fill(); circle(ctx, r * .35, r * .35, r * .18); ctx.fill();
+    } else {
+      ctx.rotate(tNow * .6);
+      const oct = k => { ctx.beginPath(); for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4 + Math.PI / 8; ctx.lineTo(Math.cos(a) * r * k, Math.sin(a) * r * k); } ctx.closePath(); };
+      ctx.fillStyle = d.color; oct(1); ctx.fill();
+      ctx.fillStyle = '#5a0c16'; oct(.68); ctx.fill();
+      ctx.rotate(-tNow * .6);
+      ctx.fillStyle = '#ffd6da'; ctx.font = `700 ${Math.round(r * .5)}px ${DISPLAY}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('BOT', 0, r * .03);
+    }
+    ctx.restore();
+    if (e.flash > 0) { ctx.fillStyle = '#ffffff'; ctx.globalAlpha = Math.min(1, e.flash / .08) * .55; circle(ctx, sx, sy, r * 1.05); ctx.fill(); ctx.globalAlpha = 1; }
+    if (e.slowT > 0) { ctx.strokeStyle = '#bfe3ff'; ctx.globalAlpha = .75; ctx.lineWidth = Math.max(1, cs * .03); circle(ctx, sx, sy, r * 1.35); ctx.stroke(); ctx.globalAlpha = 1; }
+    if (e.hp < e.maxHp) {
+      const bw = Math.max(cs * .5, r * 2.2), bh = Math.max(2, cs * .06), bx = sx - bw / 2, by = sy - r * 1.3 - bh * 2;
+      ctx.fillStyle = 'rgba(0,0,0,.6)'; ctx.fillRect(bx, by, bw, bh);
+      const f = clamp(e.hp / e.maxHp, 0, 1);
+      ctx.fillStyle = f > .5 ? '#3ee08f' : f > .25 ? '#ffb547' : '#ff4d5e'; ctx.fillRect(bx, by, bw * f, bh);
+    }
+  }
+
+  function drawBase() {
+    const [x, y, w, h] = cellRect(BASE.c, BASE.r);
+    const m = cs * .06;
+    ctx.fillStyle = '#141a27'; rrect(ctx, x + m, y + m, w - 2 * m, h - 2 * m, cs * .08); ctx.fill();
+    ctx.strokeStyle = leakFlash > 0 ? `rgba(255,77,94,${.4 + leakFlash * .6})` : '#4a5878'; ctx.lineWidth = Math.max(1, cs * .04); ctx.stroke();
+    const cols = 4, rows = 5, gx = (w - 4 * m) / cols, gy = (h - 4 * m) / rows;
+    for (let i = 0; i < START_LIVES; i++) {
+      const cx = x + 2 * m + gx * (i % cols + .5), cy = y + 2 * m + gy * (Math.floor(i / cols) + .5);
+      const alive = i < lives;
+      ctx.fillStyle = alive ? '#3ee08f' : '#5a1e27';
+      ctx.globalAlpha = alive ? .75 + .25 * Math.sin(tNow * 3 + i * 1.7) : 1;
+      ctx.fillRect(cx - gx * .28, cy - gy * .18, gx * .56, gy * .36);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // ---------- simulation ----------
+  function spawnEnemy(type, wv, s) {
+    const d = EN[type], hp = Math.round(d.hp * hpMult(wv));
+    const [x, y] = pointAt(s);
+    born.push({
+      id: ++eid, type, wave: wv, hp, maxHp: hp, s, x, y, speed: d.speed * (.95 + Math.random() * .1), armor: d.armor,
+      reward: Math.max(1, Math.round(d.reward * rewardMult(wv))), slowT: 0, slowK: 0, flash: 0, dead: false
+    });
+  }
+  function hurt(e, dmg, pierce) {
+    if (e.dead) return;
+    e.hp -= pierce ? dmg : Math.max(dmg * .25, dmg - e.armor);
+    e.flash = .08;
+    if (e.hp <= 0) kill(e);
+  }
+  function kill(e) {
+    e.dead = true; money += e.reward; kills++;
+    fx.push({ k: 'text', x: e.x, y: e.y, t: 0, life: .8, text: '+' + e.reward });
+    const col = EN[e.type].color, parts = [];
+    for (let i = 0; i < 7; i++) { const a = Math.random() * 6.283, v = .6 + Math.random() * 1.4; parts.push([Math.cos(a) * v, Math.sin(a) * v]); }
+    fx.push({ k: 'burst', x: e.x, y: e.y, t: 0, life: .45, col, parts });
+    const split = EN[e.type].split;
+    if (split) for (const k of [-.18, .18]) spawnEnemy(split, e.wave, clamp(e.s + k, 0, pathLen - .05));
+    dirtyHud = true;
+  }
+  function findTarget(t, range) {
+    let bestE = null, bestS = -1; const r2 = range * range;
+    for (const e of enemies) {
+      if (e.dead) continue;
+      const dx = e.x - t.x, dy = e.y - t.y;
+      if (dx * dx + dy * dy <= r2 && e.s > bestS) { bestS = e.s; bestE = e; }
+    }
+    return bestE;
+  }
+  function fire(t, e, st) {
+    const b = TOWERS[t.type];
+    t.kick = 1;
+    if (b.kind === 'bolt') shots.push({ k: 'bolt', x: t.x, y: t.y, e, v: 10, dmg: st.dmg, col: b.color });
+    else if (b.kind === 'orb') shots.push({ k: 'orb', x: t.x, y: t.y, sx: t.x, sy: t.y, e, tx: e.x, ty: e.y, v: 5, dmg: st.dmg, r: st.splash, col: b.color });
+    else if (b.kind === 'beam') { hurt(e, st.dmg, true); fx.push({ k: 'beam', x1: t.x, y1: t.y, x2: e.x, y2: e.y, t: 0, life: .18, col: b.color }); }
+    else {
+      const r2 = st.range * st.range;
+      for (const o of enemies) {
+        if (o.dead) continue;
+        const dx = o.x - t.x, dy = o.y - t.y;
+        if (dx * dx + dy * dy <= r2) { o.slowK = Math.max(o.slowT > 0 ? o.slowK : 0, st.slow); o.slowT = 1.1; hurt(o, st.dmg, false); }
+      }
+      fx.push({ k: 'ring', x: t.x, y: t.y, r0: .3, r1: st.range, t: 0, life: .45, col: b.color });
+    }
+  }
+
+  function update(dt) {
+    for (const sp of spawners) {
+      sp.t += dt;
+      while (sp.i < sp.list.length && sp.list[sp.i].time <= sp.t) { spawnEnemy(sp.list[sp.i].type, sp.wave, 0); sp.i++; }
+    }
+    spawners = spawners.filter(sp => sp.i < sp.list.length);
+    if (born.length) { enemies.push(...born); born = []; }
+
+    for (const e of enemies) {
+      if (e.dead) continue;
+      if (e.slowT > 0) { e.slowT -= dt; if (e.slowT <= 0) e.slowK = 0; }
+      e.flash = Math.max(0, e.flash - dt);
+      e.s += e.speed * (1 - e.slowK) * dt;
+      if (e.s >= pathLen) {
+        e.dead = true;
+        lives = Math.max(0, lives - EN[e.type].dmg); leakFlash = 1; shake = .35; dirtyHud = true;
+        if (lives <= 0 && phase !== 'over') { lives = 0; gameOver(); }
+      } else { const p = pointAt(e.s); e.x = p[0]; e.y = p[1]; }
+    }
+
+    for (const t of towers) {
+      t.cd -= dt; t.kick = Math.max(0, t.kick - dt * 6);
+      const st = tStats(t), e = findTarget(t, st.range);
+      if (e) {
+        t.aimX = e.x; t.aimY = e.y;
+        if (t.cd <= 0) { fire(t, e, st); t.cd = 1 / st.rate; }
+      }
+    }
+
+    for (const s of shots) {
+      if (s.k === 'bolt') {
+        if (s.e.dead) { s.done = true; continue; }
+        const dx = s.e.x - s.x, dy = s.e.y - s.y, d = Math.hypot(dx, dy), step = s.v * dt;
+        if (d <= step + .08) { hurt(s.e, s.dmg, false); s.done = true; }
+        else { s.x += dx / d * step; s.y += dy / d * step; }
+      } else {
+        if (!s.e.dead) { s.tx = s.e.x; s.ty = s.e.y; }
+        const dx = s.tx - s.x, dy = s.ty - s.y, d = Math.hypot(dx, dy), step = s.v * dt;
+        if (d <= step + .05) {
+          const r2 = s.r * s.r;
+          for (const o of enemies) { if (o.dead) continue; const ex = o.x - s.tx, ey = o.y - s.ty; if (ex * ex + ey * ey <= r2) hurt(o, s.dmg, false); }
+          fx.push({ k: 'boom', x: s.tx, y: s.ty, r: s.r, t: 0, life: .35, col: s.col });
+          s.done = true;
+        } else { s.x += dx / d * step; s.y += dy / d * step; }
+      }
+    }
+    shots = shots.filter(s => !s.done);
+    if (born.length) { enemies.push(...born); born = []; }
+    enemies = enemies.filter(e => !e.dead);
+
+    for (const f of fx) f.t += dt;
+    fx = fx.filter(f => f.t < f.life);
+    shake = Math.max(0, shake - dt * 2); leakFlash = Math.max(0, leakFlash - dt * 1.6);
+
+    if (phase === 'wave' && spawners.length === 0 && enemies.length === 0) waveCleared();
+    if (phase === 'over' && overT > 0) { overT -= dt; if (overT <= 0) showScreen('over'); }
+  }
+
+  // ---------- flow ----------
+  function newGame() {
+    money = START_MONEY; lives = START_LIVES; wave = 0; cleared = 0; kills = 0; built = 0;
+    towers = []; enemies = []; shots = []; fx = []; spawners = []; born = [];
+    sel = null; inspected = null; paused = false; endless = false; speedMult = 1; overT = 0;
+    seen.clear(); resetGrid(); bg = renderBackground();
+    phase = 'build'; showScreen(null); syncPalette(); syncInspect(); dirtyHud = true;
+    $('b-speed').textContent = '×1';
+    toast('Поставь пару файрволов у лотка и запускай первую волну.', 3200);
+  }
+  function canCallWave() {
+    return (phase === 'build' || phase === 'wave') && spawners.length === 0 && (endless || wave < MAX_WAVE);
+  }
+  function startWave() {
+    if (!canCallWave()) return;
+    const early = enemies.length > 0;
+    wave++;
+    const list = waveList(wave);
+    spawners.push({ wave, list, i: 0, t: 0 });
+    phase = 'wave';
+    if (early) { const bonus = 5 + wave * 2; money += bonus; toast(`Волна ${wave} вызвана раньше · <b>+${bonus} ₽</b>`); }
+    const fresh = [...new Set(list.map(x => x.type))].filter(t => !seen.has(t));
+    fresh.forEach(t => seen.add(t));
+    const intro = fresh.map(t => INTRO[t]).filter(Boolean);
+    if (intro.length) toast(intro.join('<br>'), 4200);
+    dirtyHud = true;
+  }
+  function waveCleared() {
+    phase = 'build'; cleared = wave;
+    const bonus = 15 + 3 * wave; money += bonus;
+    if (wave > best) { best = wave; store.set(BEST_KEY, String(best)); syncBest(); }
+    dirtyHud = true;
+    if (wave >= MAX_WAVE && !endless) { won(); return; }
+    toast(`Волна ${wave} отбита · <b>+${bonus} ₽</b>`);
+  }
+  function gameOver() {
+    phase = 'over'; overT = .9; sel = null; inspected = null; spawners = [];
+    if (cleared > best) { best = cleared; store.set(BEST_KEY, String(best)); }
+    syncBest();
+    $('o-text').textContent = `Стойка легла на волне ${wave}.`;
+    $('o-waves').textContent = String(cleared);
+    $('o-kills').textContent = fmt(kills);
+    $('o-built').textContent = String(built);
+    $('o-best').textContent = 'волна ' + best;
+    syncPalette(); syncInspect();
+  }
+  function won() {
+    phase = 'won';
+    $('w-text').textContent = `Все ${MAX_WAVE} волн отбиты, аптайм ${lives * 5}%. Заблокировано пакетов: ${fmt(kills)}.`;
+    showScreen('won');
+  }
+  function pauseGame() {
+    if (paused || !(phase === 'build' || phase === 'wave')) return;
+    paused = true; showScreen('pause');
+  }
+  function resumeGame() { if (!paused) return; paused = false; showScreen(null); }
+
+  function build(type, c, r) {
+    const b = TOWERS[type];
+    if (money < b.cost) { toast(`Не хватает бюджета: ${b.name} стоит ${b.cost} ₽.`); return; }
+    money -= b.cost; built++;
+    const t = { type, c, r, x: c + .5, y: r + .5, lvl: 1, cd: 0, kick: 0, spent: b.cost, aimX: c + 1.5, aimY: r + .5 };
+    towers.push(t); grid[r][c] = t;
+    fx.push({ k: 'ring', x: t.x, y: t.y, r0: .2, r1: .6, t: 0, life: .35, col: b.color });
+    if (money < b.cost) sel = null;
+    syncPalette(); dirtyHud = true;
+  }
+  function upgrade() {
+    const t = inspected; if (!t) return;
+    const cost = upCost(t);
+    if (!cost || money < cost) return;
+    money -= cost; t.spent += cost; t.lvl++;
+    fx.push({ k: 'ring', x: t.x, y: t.y, r0: .2, r1: .7, t: 0, life: .4, col: TOWERS[t.type].color });
+    syncInspect(); dirtyHud = true;
+  }
+  function sell() {
+    const t = inspected; if (!t) return;
+    money += sellValue(t);
+    towers = towers.filter(o => o !== t); grid[t.r][t.c] = null;
+    inspected = null; syncInspect(); dirtyHud = true;
+  }
+
+  function tapCell(c, r) {
+    if (!(phase === 'build' || phase === 'wave') || paused) return;
+    if (c < 0 || r < 0 || c >= COLS || r >= ROWS) { inspected = null; syncInspect(); return; }
+    const cell = grid[r][c];
+    if (cell && typeof cell === 'object') { sel = null; inspected = cell; syncPalette(); syncInspect(); return; }
+    if (sel) {
+      if (cell === null) build(sel, c, r);
+      else toast(cell === 'path' ? 'На лоток ставить нельзя, выбери плитку рядом.' : 'Эта плитка занята оборудованием.');
+      return;
+    }
+    if (inspected) { inspected = null; syncInspect(); }
+  }
+  function selectType(type) {
+    if (!(phase === 'build' || phase === 'wave')) return;
+    inspected = null; syncInspect();
+    if (sel === type) sel = null;
+    else if (money < TOWERS[type].cost) { toast(`Не хватает бюджета: ${TOWERS[type].name} стоит ${TOWERS[type].cost} ₽.`); sel = null; }
+    else sel = type;
+    syncPalette();
+  }
+
+  // ---------- UI ----------
+  const ui = { wave: $('s-wave'), waveMax: $('s-wave-max'), up: $('s-up'), upV: $('s-up-v'), money: $('s-money'), bw: $('b-wave'), bwT: $('b-wave-t'), bwS: $('b-wave-s') };
+  let dirtyHud = true, toastTimer = 0;
+  function toast(html, ms = 2200) {
+    const el = $('toast'), span = el.firstElementChild;
+    span.innerHTML = html; el.classList.add('show');
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove('show'), ms);
+  }
+  function showScreen(name) {
+    $('overlay').hidden = !name;
+    for (const k of ['title', 'pause', 'over', 'won']) $('scr-' + k).hidden = k !== name;
+    if (name && name !== 'title') {
+      const b = $('scr-' + name).querySelector('.btn');
+      if (b) setTimeout(() => { try { b.focus({ preventScroll: true }); } catch (e) { /* ignore */ } }, 30);
+    }
+  }
+  function syncBest() { $('t-best').hidden = best <= 0; $('t-best-v').textContent = 'волна ' + best; }
+  const tbs = {};
+  function buildPalette() {
+    const pal = $('palette');
+    ORDER.forEach((type, i) => {
+      const b = TOWERS[type];
+      const btn = document.createElement('button');
+      btn.type = 'button'; btn.className = 'tb'; btn.id = 'tb-' + type; btn.setAttribute('aria-pressed', 'false');
+      btn.title = `${b.name}: ${b.about}. Клавиша ${i + 1}`;
+      const icon = document.createElement('canvas'); icon.width = 72; icon.height = 72;
+      const txt = document.createElement('span'); txt.className = 'txt';
+      const nm = document.createElement('span'); nm.className = 'nm'; nm.textContent = b.name;
+      const cost = document.createElement('span'); cost.className = 'cost'; cost.textContent = b.cost + ' ₽';
+      txt.append(nm, cost); btn.append(icon, txt); pal.append(btn);
+      btn.addEventListener('click', () => selectType(type));
+      tbs[type] = { btn, icon };
+    });
+    drawIcons();
+  }
+  function drawIcons() {
+    for (const type of ORDER) {
+      const c = tbs[type].icon, g = c.getContext('2d');
+      g.clearRect(0, 0, c.width, c.height); drawTower(g, type, 1, 36, 36, 70, -Math.PI / 4, 0, 0);
+    }
+  }
+  function syncPalette() {
+    for (const type of ORDER) {
+      const { btn } = tbs[type];
+      btn.setAttribute('aria-pressed', sel === type ? 'true' : 'false');
+      btn.classList.toggle('poor', money < TOWERS[type].cost);
+    }
+  }
+  function syncInspect() {
+    const t = inspected;
+    $('palette').hidden = !!t; $('inspect').hidden = !t;
+    if (!t) return;
+    const b = TOWERS[t.type], st = tStats(t);
+    $('ins-name').textContent = `${b.name} · ур. ${t.lvl}`;
+    const parts = [`урон ${fmt1(st.dmg)}`, `дальность ${fmt1(st.range)}`];
+    if (b.kind === 'pulse') parts.push(`замедление ${Math.round(st.slow * 100)}%`);
+    else parts.push(`${fmt1(st.rate)} выстр./с`);
+    if (b.kind === 'orb') parts.push(`радиус ${fmt1(st.splash)}`);
+    $('ins-stats').textContent = parts.join(' · ');
+    const cost = upCost(t), up = $('b-up');
+    up.textContent = cost ? `Улучшить · ${cost} ₽` : 'Макс. уровень';
+    up.disabled = !cost || money < cost;
+    $('b-sell').textContent = `Продать · +${sellValue(t)} ₽`;
+    const g = $('ins-icon').getContext('2d'); g.clearRect(0, 0, 80, 80); drawTower(g, t.type, t.lvl, 40, 40, 76, -Math.PI / 4, 0, 0);
+  }
+  let lastMoney = -1, lastLives = -1;
+  function hud() {
+    if (!dirtyHud) return;
+    dirtyHud = false;
+    ui.wave.textContent = String(wave);
+    ui.waveMax.hidden = endless;
+    const up = lives * 5;
+    ui.upV.textContent = up + '%';
+    ui.up.classList.toggle('warn', up <= 60 && up > 30);
+    ui.up.classList.toggle('bad', up <= 30);
+    ui.money.textContent = fmt(money);
+    if (money !== lastMoney || lives !== lastLives) { lastMoney = money; lastLives = lives; syncPalette(); if (inspected) syncInspect(); }
+    let t = '', s = '', dis = false;
+    if (phase === 'wave' && spawners.length) { t = `Волна ${wave}`; s = 'идёт атака'; dis = true; }
+    else if (!endless && wave >= MAX_WAVE) { t = `Волна ${wave}`; s = 'последняя'; dis = true; }
+    else if (phase === 'wave') { t = `Волна ${wave + 1}`; s = `раньше · +${5 + (wave + 1) * 2} ₽`; }
+    else { t = `Волна ${wave + 1}`; s = 'запустить'; dis = !(phase === 'build'); }
+    ui.bwT.textContent = t; ui.bwS.textContent = s; ui.bw.disabled = dis;
+  }
+
+  // ---------- render ----------
+  function render() {
+    ctx.save();
+    if (shake > 0 && !reduced) ctx.translate((Math.random() - .5) * shake * 10 * dpr, (Math.random() - .5) * shake * 10 * dpr);
+    if (bg) ctx.drawImage(bg, 0, 0);
+
+    const active = phase === 'build' || phase === 'wave';
+    if (active && sel && money >= TOWERS[sel].cost) {
+      ctx.strokeStyle = 'rgba(226,174,51,.28)'; ctx.lineWidth = Math.max(1, dpr); ctx.setLineDash([4 * dpr, 4 * dpr]);
+      for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) if (grid[r][c] === null) {
+        const [x, y, w, h] = cellRect(c, r); ctx.strokeRect(x + 3 * dpr, y + 3 * dpr, w - 6 * dpr, h - 6 * dpr);
+      }
+      ctx.setLineDash([]);
+    }
+    const showRange = (x, y, range, col) => {
+      const [sx, sy] = V(x, y);
+      ctx.fillStyle = col; ctx.globalAlpha = .08; circle(ctx, sx, sy, range * cs); ctx.fill();
+      ctx.globalAlpha = .55; ctx.strokeStyle = col; ctx.lineWidth = Math.max(1, dpr * 1.5); ctx.stroke(); ctx.globalAlpha = 1;
+    };
+    if (inspected) showRange(inspected.x, inspected.y, tStats(inspected).range, TOWERS[inspected.type].color);
+
+    for (const t of towers) {
+      const [sx, sy] = V(t.x, t.y), [ax, ay] = V(t.aimX, t.aimY);
+      const ang = TOWERS[t.type].kind === 'pulse' ? 0 : Math.atan2(ay - sy, ax - sx);
+      if (t === inspected) { const [x, y, w, h] = cellRect(t.c, t.r); ctx.strokeStyle = '#e2ae33'; ctx.lineWidth = Math.max(1, 2 * dpr); ctx.strokeRect(x + dpr, y + dpr, w - 2 * dpr, h - 2 * dpr); }
+      drawTower(ctx, t.type, t.lvl, sx, sy, cs, ang, t.kick, tNow);
+    }
+
+    drawBase();
+    for (const e of enemies) drawEnemy(e);
+
+    for (const s of shots) {
+      const [sx, sy] = V(s.x, s.y);
+      ctx.fillStyle = s.col;
+      if (s.k === 'bolt') { ctx.globalAlpha = .35; circle(ctx, sx, sy, cs * .1); ctx.fill(); ctx.globalAlpha = 1; circle(ctx, sx, sy, cs * .05); ctx.fill(); }
+      else {
+        const total = Math.hypot(s.tx - s.sx, s.ty - s.sy) || 1, left = Math.hypot(s.tx - s.x, s.ty - s.y);
+        const lift = Math.sin(Math.PI * clamp(1 - left / total, 0, 1)) * cs * .35;
+        ctx.globalAlpha = .3; circle(ctx, sx, sy, cs * .08); ctx.fill(); ctx.globalAlpha = 1;
+        circle(ctx, sx, sy - lift, cs * .09); ctx.fill();
+      }
+    }
+
+    for (const f of fx) {
+      const p = f.t / f.life;
+      if (f.k === 'ring') {
+        const [sx, sy] = V(f.x, f.y); ctx.strokeStyle = f.col; ctx.globalAlpha = (1 - p) * .8; ctx.lineWidth = Math.max(1, cs * .05);
+        circle(ctx, sx, sy, lerp(f.r0, f.r1, p) * cs); ctx.stroke();
+      } else if (f.k === 'boom') {
+        const [sx, sy] = V(f.x, f.y); ctx.fillStyle = f.col; ctx.globalAlpha = (1 - p) * .45;
+        circle(ctx, sx, sy, f.r * cs * (.5 + p * .5)); ctx.fill();
+      } else if (f.k === 'beam') {
+        const [x1, y1] = V(f.x1, f.y1), [x2, y2] = V(f.x2, f.y2);
+        ctx.globalAlpha = 1 - p; ctx.strokeStyle = f.col; ctx.lineWidth = Math.max(2, cs * .09);
+        ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+        ctx.strokeStyle = '#fff6e6'; ctx.lineWidth = Math.max(1, cs * .03); ctx.stroke();
+      } else if (f.k === 'burst') {
+        ctx.fillStyle = f.col; ctx.globalAlpha = 1 - p;
+        for (const [vx, vy] of f.parts) { const [sx, sy] = V(f.x + vx * p * .6, f.y + vy * p * .6); ctx.fillRect(sx - cs * .03, sy - cs * .03, cs * .06, cs * .06); }
+      } else if (f.k === 'text') {
+        const [sx, sy] = V(f.x, f.y); ctx.globalAlpha = 1 - p * p; ctx.fillStyle = '#f4d35e';
+        ctx.font = `700 ${Math.round(cs * .24)}px ${DISPLAY}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(f.text, sx, sy - p * cs * .5);
+      }
+      ctx.globalAlpha = 1;
+    }
+
+    if (hover && active && sel) {
+      const [c, r] = hover;
+      if (c >= 0 && r >= 0 && c < COLS && r < ROWS) {
+        const ok = grid[r][c] === null && money >= TOWERS[sel].cost;
+        const [sx, sy] = V(c + .5, r + .5);
+        showRange(c + .5, r + .5, TOWERS[sel].range, ok ? TOWERS[sel].color : '#ff4d5e');
+        ctx.globalAlpha = ok ? .7 : .35; drawTower(ctx, sel, 1, sx, sy, cs, -Math.PI / 4, 0, tNow); ctx.globalAlpha = 1;
+      }
+    }
+
+    if (leakFlash > 0) {
+      const g = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * .3, W / 2, H / 2, Math.hypot(W, H) * .6);
+      g.addColorStop(0, 'rgba(255,77,94,0)'); g.addColorStop(1, `rgba(255,77,94,${leakFlash * .35})`);
+      ctx.fillStyle = g; ctx.fillRect(-20, -20, W + 40, H + 40);
+    }
+    ctx.restore();
+  }
+
+  // ---------- input ----------
+  function eventCell(e) {
+    const rect = cv.getBoundingClientRect();
+    const [gx, gy] = toGrid((e.clientX - rect.left) * dpr, (e.clientY - rect.top) * dpr);
+    return [Math.floor(gx), Math.floor(gy)];
+  }
+  cv.addEventListener('pointerdown', e => { if (e.button > 0) return; const [c, r] = eventCell(e); tapCell(c, r); });
+  cv.addEventListener('pointermove', e => { hover = e.pointerType === 'mouse' ? eventCell(e) : null; });
+  cv.addEventListener('pointerleave', () => { hover = null; });
+  cv.addEventListener('contextmenu', e => { e.preventDefault(); sel = null; inspected = null; syncPalette(); syncInspect(); });
+
+  $('b-start').addEventListener('click', newGame);
+  for (const id of ['b-new1', 'b-new2', 'b-new3']) $(id).addEventListener('click', newGame);
+  $('b-resume').addEventListener('click', resumeGame);
+  $('b-endless').addEventListener('click', () => { endless = true; phase = 'build'; showScreen(null); dirtyHud = true; toast('Бесконечный режим. Волны только растут.'); });
+  $('b-wave').addEventListener('click', startWave);
+  $('b-up').addEventListener('click', upgrade);
+  $('b-sell').addEventListener('click', sell);
+  $('b-close').addEventListener('click', () => { inspected = null; syncInspect(); });
+  $('b-pause').addEventListener('click', () => paused ? resumeGame() : pauseGame());
+  const cycleSpeed = () => { speedMult = speedMult === 1 ? 2 : speedMult === 2 ? 3 : 1; $('b-speed').textContent = '×' + speedMult; };
+  $('b-speed').addEventListener('click', cycleSpeed);
+
+  addEventListener('keydown', e => {
+    if (!$('overlay').hidden) {
+      if (e.code === 'Escape' && paused) { e.preventDefault(); resumeGame(); }
+      else if ((e.code === 'Enter' || e.code === 'Space') && !(document.activeElement && document.activeElement.tagName === 'BUTTON')) {
+        e.preventDefault();
+        if (!$('scr-title').hidden) newGame(); else if (paused) resumeGame();
+      }
+      return;
+    }
+    if (document.activeElement && document.activeElement.tagName === 'BUTTON' && (e.code === 'Space' || e.code === 'Enter')) return;
+    const n = ['Digit1', 'Digit2', 'Digit3', 'Digit4'].indexOf(e.code);
+    if (n >= 0) { selectType(ORDER[n]); return; }
+    if (e.code === 'Space') { e.preventDefault(); startWave(); }
+    else if (e.code === 'KeyF') cycleSpeed();
+    else if (e.code === 'KeyP') paused ? resumeGame() : pauseGame();
+    else if (e.code === 'KeyU') upgrade();
+    else if (e.code === 'Escape') { sel = null; inspected = null; syncPalette(); syncInspect(); }
+  });
+  document.addEventListener('visibilitychange', () => { if (document.hidden) pauseGame(); });
+  const enableTouch = () => app.classList.add('touch');
+  if (matchMedia('(pointer: coarse)').matches) enableTouch();
+  addEventListener('touchstart', enableTouch, { passive: true, once: true });
+
+  // ---------- loop ----------
+  let lastFrame = performance.now();
+  function frame(now) {
+    const dt = Math.min(.1, Math.max(0, (now - lastFrame) / 1000));
+    lastFrame = now; tNow += dt;
+    if (!paused && (phase === 'build' || phase === 'wave' || phase === 'over')) {
+      let left = dt * speedMult;
+      while (left > 1e-6) { const step = Math.min(left, 1 / 60); update(step); left -= step; }
+    }
+    render(); hud();
+    requestAnimationFrame(frame);
+  }
+
+  function start(data) {
+    best = Number(data && data.best) || Number(store.get(BEST_KEY)) || 0;
+    syncBest();
+    try { const hot = window.claude && window.claude.hot; if (hot && hot.snapshot) hot.snapshot(() => ({ best })); } catch (e) { /* optional */ }
+    resetGrid();
+    buildPalette(); syncPalette();
+    if ('ResizeObserver' in window) new ResizeObserver(resize).observe(stage); else addEventListener('resize', resize);
+    resize();
+    const fonts = document.fonts && document.fonts.load
+      ? Promise.all([document.fonts.load(`700 20px ${DISPLAY}`), document.fonts.load(`600 14px ${MONO}`)]).catch(() => {})
+      : Promise.resolve();
+    Promise.race([fonts, new Promise(r => setTimeout(r, 1500))]).then(() => { bg = renderBackground(); drawIcons(); });
+    showScreen('title');
+    requestAnimationFrame(frame);
+  }
+
+  const hot = window.claude && window.claude.hot;
+  if (hot && typeof hot.ready === 'function') hot.ready(start);
+  else start((hot && hot.data) || {});
+})();
+</script>
+</body>
+</html>
